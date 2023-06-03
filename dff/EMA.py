@@ -16,9 +16,9 @@ import os.path
 import warnings
 from typing import Any, Dict, List, Optional
 
-import pytorch_lightning as pl
+import lightning as L
 import torch
-from pytorch_lightning import Callback
+from lightning.pytorch.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_warn
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from pytorch_lightning.utilities.types import STEP_OUTPUT
@@ -72,7 +72,7 @@ class EMA(Callback):
         self.decay = decay
 
     def on_train_start(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
     ) -> None:
         if self._ema_model_weights is None:
             self._ema_model_weights = [
@@ -84,12 +84,12 @@ class EMA(Callback):
         ]
         self._overflow_buf = torch.IntTensor([0]).to(pl_module.device)
 
-    def ema(self, pl_module: "pl.LightningModule") -> None:
+    def ema(self, pl_module: "L.LightningModule") -> None:
         if apex_available and pl_module.device.type == "cuda":
             return self.apply_multi_tensor_ema(pl_module)
         return self.apply_ema(pl_module)
 
-    def apply_multi_tensor_ema(self, pl_module: "pl.LightningModule") -> None:
+    def apply_multi_tensor_ema(self, pl_module: "L.LightningModule") -> None:
         model_weights = list(pl_module.state_dict().values())
         amp_C.multi_tensor_axpby(
             65536,  # todo (sean): chunk size, should we expose?
@@ -100,7 +100,7 @@ class EMA(Callback):
             -1,
         )
 
-    def apply_ema(self, pl_module: "pl.LightningModule") -> None:
+    def apply_ema(self, pl_module: "L.LightningModule") -> None:
         for orig_weight, ema_weight in zip(
             list(pl_module.state_dict().values()), self._ema_model_weights
         ):
@@ -119,8 +119,8 @@ class EMA(Callback):
 
     def on_train_batch_end(
         self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
+        trainer: "L.Trainer",
+        pl_module: "L.LightningModule",
         outputs: STEP_OUTPUT,
         batch: Any,
         batch_idx: int,
@@ -142,8 +142,8 @@ class EMA(Callback):
 
     def on_load_checkpoint(
         self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
+        trainer: "L.Trainer",
+        pl_module: "L.LightningModule",
         checkpoint: Dict[str, Any],
     ) -> None:
         checkpoint_callback = trainer.checkpoint_callback
@@ -168,7 +168,7 @@ class EMA(Callback):
                     UserWarning,
                 )
 
-    def replace_model_weights(self, pl_module: "pl.LightningModule") -> None:
+    def replace_model_weights(self, pl_module: "L.LightningModule") -> None:
         self._weights_buffer = [
             p.detach().clone().to("cpu") for p in pl_module.state_dict().values()
         ]
@@ -177,7 +177,7 @@ class EMA(Callback):
         }
         pl_module.load_state_dict(new_state_dict)
 
-    def restore_original_weights(self, pl_module: "pl.LightningModule") -> None:
+    def restore_original_weights(self, pl_module: "L.LightningModule") -> None:
         state_dict = pl_module.state_dict()
         new_state_dict = {k: v for k, v in zip(state_dict.keys(), self._weights_buffer)}
         pl_module.load_state_dict(new_state_dict)
@@ -188,25 +188,25 @@ class EMA(Callback):
         return self._ema_model_weights is not None
 
     def on_validation_start(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
     ) -> None:
         if self.ema_initialized and self.evaluate_ema_weights_instead:
             self.replace_model_weights(pl_module)
 
     def on_validation_end(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
     ) -> None:
         if self.ema_initialized and self.evaluate_ema_weights_instead:
             self.restore_original_weights(pl_module)
 
     def on_test_start(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
     ) -> None:
         if self.ema_initialized and self.evaluate_ema_weights_instead:
             self.replace_model_weights(pl_module)
 
     def on_test_end(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
     ) -> None:
         if self.ema_initialized and self.evaluate_ema_weights_instead:
             self.restore_original_weights(pl_module)

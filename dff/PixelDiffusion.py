@@ -1,4 +1,4 @@
-import pytorch_lightning as pl
+import lightning as L
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from .DenoisingDiffusionProcess import *
 
 
-class PixelDiffusion(pl.LightningModule):
+class PixelDiffusion(L.LightningModule):
     def __init__(
         self,
         generated_channels,
@@ -73,9 +73,14 @@ class PixelDiffusion(pl.LightningModule):
             return None
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(
+        # Cosine Annealing LR Scheduler
+        
+        optimizer = torch.optim.AdamW(
             list(filter(lambda p: p.requires_grad, self.model.parameters())), lr=self.lr
         )
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.trainer.max_epochs, eta_min=1e-6) 
+
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
 
 class PixelDiffusionConditional(PixelDiffusion):
@@ -88,7 +93,7 @@ class PixelDiffusionConditional(PixelDiffusion):
         batch_size=1,
         lr=1e-3,
     ):
-        pl.LightningModule.__init__(self)
+        L.LightningModule.__init__(self)
         self.save_hyperparameters()
         self.generated_channels = generated_channels
         self.condition_channels = condition_channels

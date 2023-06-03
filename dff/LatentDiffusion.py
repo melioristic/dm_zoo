@@ -1,4 +1,4 @@
-import pytorch_lightning as pl
+import lightning as L
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,7 +40,7 @@ class AutoEncoder(nn.Module):
         return self.model.decode(input).sample
 
 
-class LatentDiffusion(pl.LightningModule):
+class LatentDiffusion(L.LightningModule):
     def __init__(
         self,
         train_dataset,
@@ -135,7 +135,7 @@ class LatentDiffusionConditional(LatentDiffusion):
         batch_size=1,
         lr=1e-4,
     ):
-        pl.LightningModule.__init__(self)
+        L.LightningModule.__init__(self)
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
         self.lr = lr
