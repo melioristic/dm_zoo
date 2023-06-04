@@ -1,9 +1,10 @@
-import lightning as L
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 # from diffusers.models import AutoencoderKL
 
 from .DenoisingDiffusionProcess import *
@@ -40,7 +41,7 @@ class AutoEncoder(nn.Module):
         return self.model.decode(input).sample
 
 
-class LatentDiffusion(L.LightningModule):
+class LatentDiffusion(pl.LightningModule):
     def __init__(
         self,
         train_dataset,
@@ -58,14 +59,18 @@ class LatentDiffusion(L.LightningModule):
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
         self.lr = lr
-        self.register_buffer("latent_scale_factor", torch.tensor(latent_scale_factor))
+        self.register_buffer(
+            "latent_scale_factor",
+            torch.tensor(latent_scale_factor),
+        )
         self.batch_size = batch_size
 
         self.ae = AutoEncoder()
         with torch.no_grad():
             self.latent_dim = self.ae.encode(torch.ones(1, 3, 256, 256)).shape[1]
         self.model = DenoisingDiffusionProcess(
-            generated_channels=self.latent_dim, num_timesteps=num_timesteps
+            generated_channels=self.latent_dim,
+            num_timesteps=num_timesteps,
         )
 
     @torch.no_grad()
@@ -105,7 +110,10 @@ class LatentDiffusion(L.LightningModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=4,
         )
 
     def val_dataloader(self):
@@ -121,7 +129,13 @@ class LatentDiffusion(L.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.AdamW(
-            list(filter(lambda p: p.requires_grad, self.model.parameters())), lr=self.lr
+            list(
+                filter(
+                    lambda p: p.requires_grad,
+                    self.model.parameters(),
+                )
+            ),
+            lr=self.lr,
         )
 
 
@@ -135,11 +149,14 @@ class LatentDiffusionConditional(LatentDiffusion):
         batch_size=1,
         lr=1e-4,
     ):
-        L.LightningModule.__init__(self)
+        pl.LightningModule.__init__(self)
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
         self.lr = lr
-        self.register_buffer("latent_scale_factor", torch.tensor(latent_scale_factor))
+        self.register_buffer(
+            "latent_scale_factor",
+            torch.tensor(latent_scale_factor),
+        )
         self.batch_size = batch_size
 
         self.ae = AutoEncoder()

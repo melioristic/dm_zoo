@@ -48,14 +48,19 @@ class GaussianForwardProcess(ForwardModel):
 
         # get process parameters
         self.register_buffer(
-            "betas", get_beta_schedule(self.schedule, self.num_timesteps)
+            "betas",
+            get_beta_schedule(self.schedule, self.num_timesteps),
         )
         self.register_buffer("betas_sqrt", self.betas.sqrt())
         self.register_buffer("alphas", 1 - self.betas)
         self.register_buffer("alphas_cumprod", torch.cumprod(self.alphas, 0))
-        self.register_buffer("alphas_cumprod_sqrt", self.alphas_cumprod.sqrt())
         self.register_buffer(
-            "alphas_one_minus_cumprod_sqrt", (1 - self.alphas_cumprod).sqrt()
+            "alphas_cumprod_sqrt",
+            self.alphas_cumprod.sqrt(),
+        )
+        self.register_buffer(
+            "alphas_one_minus_cumprod_sqrt",
+            (1 - self.alphas_cumprod).sqrt(),
         )
         self.register_buffer("alphas_sqrt", self.alphas.sqrt())
 

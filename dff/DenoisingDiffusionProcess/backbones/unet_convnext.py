@@ -126,7 +126,12 @@ class LinearAttention(nn.Module):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x).chunk(3, dim=1)
         q, k, v = map(
-            lambda t: rearrange(t, "b (h c) x y -> b h c (x y)", h=self.heads), qkv
+            lambda t: rearrange(
+                t,
+                "b (h c) x y -> b h c (x y)",
+                h=self.heads,
+            ),
+            qkv,
         )
         q = q * self.scale
 
@@ -134,7 +139,13 @@ class LinearAttention(nn.Module):
         context = torch.einsum("b h d n, b h e n -> b h d e", k, v)
 
         out = torch.einsum("b h d e, b h d n -> b h e n", context, q)
-        out = rearrange(out, "b h c (x y) -> b (h c) x y", h=self.heads, x=h, y=w)
+        out = rearrange(
+            out,
+            "b h c (x y) -> b (h c) x y",
+            h=self.heads,
+            x=h,
+            y=w,
+        )
         return self.to_out(out)
 
 
@@ -158,7 +169,10 @@ class UnetConvNextBlock(nn.Module):
         print("Is Time embed used ? ", with_time_emb)
         self.output_mean_scale = output_mean_scale
 
-        dims = [channels, *map(lambda m: dim * m, dim_mults)]
+        dims = [
+            channels,
+            *map(lambda m: dim * m, dim_mults),
+        ]
         in_out = list(zip(dims[:-1], dims[1:]))
 
         if with_time_emb:
@@ -184,10 +198,22 @@ class UnetConvNextBlock(nn.Module):
                 nn.ModuleList(
                     [
                         ConvNextBlock(
-                            dim_in, dim_out, time_emb_dim=time_dim, norm=ind != 0
+                            dim_in,
+                            dim_out,
+                            time_emb_dim=time_dim,
+                            norm=ind != 0,
                         ),
-                        ConvNextBlock(dim_out, dim_out, time_emb_dim=time_dim),
-                        Residual(PreNorm(dim_out, LinearAttention(dim_out))),
+                        ConvNextBlock(
+                            dim_out,
+                            dim_out,
+                            time_emb_dim=time_dim,
+                        ),
+                        Residual(
+                            PreNorm(
+                                dim_out,
+                                LinearAttention(dim_out),
+                            )
+                        ),
                         Downsample(dim_out) if not is_last else nn.Identity(),
                     ]
                 )
@@ -204,9 +230,22 @@ class UnetConvNextBlock(nn.Module):
             self.ups.append(
                 nn.ModuleList(
                     [
-                        ConvNextBlock(dim_out * 2, dim_in, time_emb_dim=time_dim),
-                        ConvNextBlock(dim_in, dim_in, time_emb_dim=time_dim),
-                        Residual(PreNorm(dim_in, LinearAttention(dim_in))),
+                        ConvNextBlock(
+                            dim_out * 2,
+                            dim_in,
+                            time_emb_dim=time_dim,
+                        ),
+                        ConvNextBlock(
+                            dim_in,
+                            dim_in,
+                            time_emb_dim=time_dim,
+                        ),
+                        Residual(
+                            PreNorm(
+                                dim_in,
+                                LinearAttention(dim_in),
+                            )
+                        ),
                         Upsample(dim_in) if not is_last else nn.Identity(),
                     ]
                 )
@@ -228,7 +267,12 @@ class UnetConvNextBlock(nn.Module):
         original_mean = torch.mean(x, [1, 2, 3], keepdim=True)
         h = []
 
-        for convnext, convnext2, attn, downsample in self.downs:
+        for (
+            convnext,
+            convnext2,
+            attn,
+            downsample,
+        ) in self.downs:
             x = convnext(x, t)
             x = convnext2(x, t)
             x = attn(x)

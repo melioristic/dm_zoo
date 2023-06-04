@@ -16,11 +16,13 @@ import os.path
 import warnings
 from typing import Any, Dict, List, Optional
 
-import lightning as L
+import pytorch_lightning as pl
 import torch
-from lightning.pytorch.callbacks import Callback
+from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_warn
-from pytorch_lightning.utilities.exceptions import MisconfigurationException
+from pytorch_lightning.utilities.exceptions import (
+    MisconfigurationException,
+)
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 
 try:
@@ -57,7 +59,9 @@ class EMA(Callback):
     ):
         if not apex_available:
             rank_zero_warn(
-                "EMA has better performance when Apex is installed: https://github.com/NVIDIA/apex#installation."
+                "EMA has better performance when Apex is"
+                " installed:"
+                " https://github.com/NVIDIA/apex#installation."
             )
         if not (0 <= decay <= 1):
             raise MisconfigurationException("EMA decay value must be between 0 and 1")
@@ -72,7 +76,9 @@ class EMA(Callback):
         self.decay = decay
 
     def on_train_start(
-        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
+        self,
+        trainer: "L.Trainer",
+        pl_module: "L.LightningModule",
     ) -> None:
         if self._ema_model_weights is None:
             self._ema_model_weights = [
@@ -94,7 +100,11 @@ class EMA(Callback):
         amp_C.multi_tensor_axpby(
             65536,  # todo (sean): chunk size, should we expose?
             self._overflow_buf,
-            [self._ema_model_weights, model_weights, self._ema_model_weights],
+            [
+                self._ema_model_weights,
+                model_weights,
+                self._ema_model_weights,
+            ],
             self.decay,
             1 - self.decay,
             -1,
@@ -102,7 +112,8 @@ class EMA(Callback):
 
     def apply_ema(self, pl_module: "L.LightningModule") -> None:
         for orig_weight, ema_weight in zip(
-            list(pl_module.state_dict().values()), self._ema_model_weights
+            list(pl_module.state_dict().values()),
+            self._ema_model_weights,
         ):
             if orig_weight.data.shape == ema_weight.data:
                 # (only if same shape, ignores gammas for diffusion models)
@@ -131,7 +142,10 @@ class EMA(Callback):
 
     def state_dict(self) -> Dict[str, Any]:
         if self.save_ema_weights_in_callback_state:
-            return dict(cur_step=self._cur_step, ema_weights=self._ema_model_weights)
+            return dict(
+                cur_step=self._cur_step,
+                ema_weights=self._ema_model_weights,
+            )
         return dict(cur_step=self._cur_step)
 
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
@@ -158,13 +172,20 @@ class EMA(Callback):
                 return
             ema_path = trainer.ckpt_path.replace(ext, f"-EMA{ext}")
             if os.path.exists(ema_path):
-                ema_state_dict = torch.load(ema_path, map_location=torch.device("cpu"))
+                ema_state_dict = torch.load(
+                    ema_path,
+                    map_location=torch.device("cpu"),
+                )
                 self._ema_model_weights = ema_state_dict["state_dict"].values()
                 del ema_state_dict
             else:
                 warnings.warn(
-                    "we were unable to find the associated EMA weights when re-loading, "
-                    "training will start with new EMA weights.",
+                    (
+                        "we were unable to find the"
+                        " associated EMA weights when"
+                        " re-loading, training will start"
+                        " with new EMA weights."
+                    ),
                     UserWarning,
                 )
 
@@ -173,7 +194,11 @@ class EMA(Callback):
             p.detach().clone().to("cpu") for p in pl_module.state_dict().values()
         ]
         new_state_dict = {
-            k: v for k, v in zip(pl_module.state_dict().keys(), self._ema_model_weights)
+            k: v
+            for k, v in zip(
+                pl_module.state_dict().keys(),
+                self._ema_model_weights,
+            )
         }
         pl_module.load_state_dict(new_state_dict)
 
@@ -188,25 +213,33 @@ class EMA(Callback):
         return self._ema_model_weights is not None
 
     def on_validation_start(
-        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
+        self,
+        trainer: "L.Trainer",
+        pl_module: "L.LightningModule",
     ) -> None:
         if self.ema_initialized and self.evaluate_ema_weights_instead:
             self.replace_model_weights(pl_module)
 
     def on_validation_end(
-        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
+        self,
+        trainer: "L.Trainer",
+        pl_module: "L.LightningModule",
     ) -> None:
         if self.ema_initialized and self.evaluate_ema_weights_instead:
             self.restore_original_weights(pl_module)
 
     def on_test_start(
-        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
+        self,
+        trainer: "L.Trainer",
+        pl_module: "L.LightningModule",
     ) -> None:
         if self.ema_initialized and self.evaluate_ema_weights_instead:
             self.replace_model_weights(pl_module)
 
     def on_test_end(
-        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
+        self,
+        trainer: "L.Trainer",
+        pl_module: "L.LightningModule",
     ) -> None:
         if self.ema_initialized and self.evaluate_ema_weights_instead:
             self.restore_original_weights(pl_module)

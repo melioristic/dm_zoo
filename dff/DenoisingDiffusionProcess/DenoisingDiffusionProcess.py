@@ -30,10 +30,11 @@ class DenoisingDiffusionProcess(nn.Module):
 
         # Forward Process Used for Training
         self.forward_process = GaussianForwardProcess(
-            num_timesteps=self.num_timesteps, schedule=schedule
+            num_timesteps=self.num_timesteps,
+            schedule=schedule,
         )
         self.model = UnetConvNextBlock(
-            dim=64, # this is the number of channels that gets created at the coarsest resolution.
+            dim=64,  # this is the number of channels that gets created at the coarsest resolution.
             dim_mults=(1, 2, 4, 8),
             channels=self.generated_channels,
             out_dim=self.generated_channels,
@@ -48,7 +49,13 @@ class DenoisingDiffusionProcess(nn.Module):
         )
 
     @torch.no_grad()
-    def forward(self, shape=(256, 256), batch_size=1, sampler=None, verbose=False):
+    def forward(
+        self,
+        shape=(256, 256),
+        batch_size=1,
+        sampler=None,
+        verbose=False,
+    ):
         """
         forward() function triggers a complete inference cycle
 
@@ -56,7 +63,11 @@ class DenoisingDiffusionProcess(nn.Module):
         """
 
         # read dimensions
-        b, c, h, w = batch_size, self.generated_channels, *shape
+        b, c, h, w = (
+            batch_size,
+            self.generated_channels,
+            *shape,
+        )
         device = next(self.model.parameters()).device
 
         # select sampler
@@ -69,10 +80,19 @@ class DenoisingDiffusionProcess(nn.Module):
         num_timesteps = sampler.num_timesteps
         it = reversed(range(0, num_timesteps))
 
-        x_t = torch.randn([b, self.generated_channels, h, w], device=device)
+        x_t = torch.randn(
+            [b, self.generated_channels, h, w],
+            device=device,
+        )
 
         for i in (
-            tqdm(it, desc="diffusion sampling", total=num_timesteps) if verbose else it
+            tqdm(
+                it,
+                desc="diffusion sampling",
+                total=num_timesteps,
+            )
+            if verbose
+            else it
         ):
             t = torch.full((b,), i, device=device, dtype=torch.long)
             z_t = self.model(x_t, t)  # prediction of noise
@@ -92,7 +112,10 @@ class DenoisingDiffusionProcess(nn.Module):
 
         # input is the optional condition
         t = torch.randint(
-            0, self.forward_process.num_timesteps, (b,), device=device
+            0,
+            self.forward_process.num_timesteps,
+            (b,),
+            device=device,
         ).long()
         output_noisy, noise = self.forward_process(output, t, return_noise=True)
 
@@ -123,7 +146,8 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
 
         # Forward Process
         self.forward_process = GaussianForwardProcess(
-            num_timesteps=self.num_timesteps, schedule=schedule
+            num_timesteps=self.num_timesteps,
+            schedule=schedule,
         )
 
         # Neural Network Backbone
@@ -165,10 +189,19 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         num_timesteps = sampler.num_timesteps
         it = reversed(range(0, num_timesteps))
 
-        x_t = torch.randn([b, self.generated_channels, h, w], device=device)
+        x_t = torch.randn(
+            [b, self.generated_channels, h, w],
+            device=device,
+        )
 
         for i in (
-            tqdm(it, desc="diffusion sampling", total=num_timesteps) if verbose else it
+            tqdm(
+                it,
+                desc="diffusion sampling",
+                total=num_timesteps,
+            )
+            if verbose
+            else it
         ):
             t = torch.full((b,), i, device=device, dtype=torch.long)
             model_input = torch.cat([x_t, condition], 1).to(device)
@@ -189,7 +222,10 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
 
         # input is the optional condition
         t = torch.randint(
-            0, self.forward_process.num_timesteps, (b,), device=device
+            0,
+            self.forward_process.num_timesteps,
+            (b,),
+            device=device,
         ).long()
         output_noisy, noise = self.forward_process(output, t, return_noise=True)
 

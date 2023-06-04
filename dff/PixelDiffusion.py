@@ -1,4 +1,4 @@
-import lightning as L
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from .DenoisingDiffusionProcess import *
 
 
-class PixelDiffusion(L.LightningModule):
+class PixelDiffusion(pl.LightningModule):
     def __init__(
         self,
         generated_channels,
@@ -18,13 +18,15 @@ class PixelDiffusion(L.LightningModule):
         lr=1e-3,
     ):
         super().__init__()
-        self.save_hyperparameters()
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
         self.lr = lr
         self.batch_size = batch_size
 
-        self.model = DenoisingDiffusionProcess(num_timesteps=num_timesteps, generated_channels=generated_channels)
+        self.model = DenoisingDiffusionProcess(
+            num_timesteps=num_timesteps,
+            generated_channels=generated_channels,
+        )
 
     @torch.no_grad()
     def forward(self, *args, **kwargs):
@@ -57,30 +59,45 @@ class PixelDiffusion(L.LightningModule):
     def train_dataloader(self):
         if self.train_dataset is not None:
             return DataLoader(
-                self.train_dataset, batch_size=self.batch_size, shuffle=True
+                self.train_dataset,
+                batch_size=self.batch_size,
+                shuffle=True,
             )
         else:
             return None
-        
+
     def val_dataloader(self):
         if self.valid_dataset is not None:
             return DataLoader(
                 self.valid_dataset,
                 batch_size=self.batch_size,
-                shuffle=False
+                shuffle=False,
             )
         else:
             return None
 
     def configure_optimizers(self):
         # Cosine Annealing LR Scheduler
-        
-        optimizer = torch.optim.AdamW(
-            list(filter(lambda p: p.requires_grad, self.model.parameters())), lr=self.lr
-        )
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.trainer.max_epochs, eta_min=1e-6) 
 
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        optimizer = torch.optim.AdamW(
+            list(
+                filter(
+                    lambda p: p.requires_grad,
+                    self.model.parameters(),
+                )
+            ),
+            lr=self.lr,
+        )
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=self.trainer.max_epochs,
+            eta_min=1e-6,
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+        }
 
 
 class PixelDiffusionConditional(PixelDiffusion):
@@ -93,8 +110,7 @@ class PixelDiffusionConditional(PixelDiffusion):
         batch_size=1,
         lr=1e-3,
     ):
-        L.LightningModule.__init__(self)
-        self.save_hyperparameters()
+        pl.LightningModule.__init__(self)
         self.generated_channels = generated_channels
         self.condition_channels = condition_channels
         self.batch_size = batch_size
@@ -103,17 +119,16 @@ class PixelDiffusionConditional(PixelDiffusion):
         self.valid_dataset = valid_dataset
         self.lr = lr
         self.batch_size = batch_size
-
         self.model = DenoisingDiffusionConditionalProcess(
             generated_channels=generated_channels,
-            condition_channels=condition_channels
+            condition_channels=condition_channels,
         )
 
     @torch.no_grad()
     def forward(self, batch, *args, **kwargs):
         input, _, _ = batch
         return self.output_T(self.model(self.input_T(input), *args, **kwargs))
-    
+
     def training_step(self, batch, batch_idx):
         input, output, _ = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
@@ -126,17 +141,18 @@ class PixelDiffusionConditional(PixelDiffusion):
         input, output, _ = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
-        self.log("val_loss", loss)
+        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
 
         return loss
 
     def config(self):
-        cfg = {"model_name":"PixelDiffusionConditional",
-                "model_hparam":{
-                    "generated_channels":self.generated_channels,
-                    "condition_channels":self.condition_channels,
-                    "batch_size":self.batch_size,
-                    "lr":self.lr,
-                }   
-                }
+        cfg = {
+            "model_name": "PixelDiffusionConditional",
+            "model_hparam": {
+                "generated_channels": self.generated_channels,
+                "condition_channels": self.condition_channels,
+                "batch_size": self.batch_size,
+                "lr": self.lr,
+            },
+        }
         return cfg
