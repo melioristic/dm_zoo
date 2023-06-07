@@ -20,6 +20,7 @@ class DenoisingDiffusionProcess(nn.Module):
         schedule="linear",
         num_timesteps=1000,
         sampler=None,
+        cylindrical_padding=False
     ):
         super().__init__()
 
@@ -39,6 +40,7 @@ class DenoisingDiffusionProcess(nn.Module):
             channels=self.generated_channels,
             out_dim=self.generated_channels,
             with_time_emb=True,
+            cylindrical_padding=cylindrical_padding
         )
 
         # defaults to a DDPM sampler if None is provided
@@ -135,6 +137,7 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         schedule="linear",
         num_timesteps=1000,
         sampler=None,
+        cylindrical_padding=False
     ):
         super().__init__()
 
@@ -157,6 +160,7 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
             channels=self.generated_channels + condition_channels,
             out_dim=self.generated_channels,
             with_time_emb=True,
+            cylindrical_padding=cylindrical_padding
         )
 
         # defaults to a DDPM sampler if None is provided

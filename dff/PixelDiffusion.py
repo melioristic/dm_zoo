@@ -88,16 +88,21 @@ class PixelDiffusion(pl.LightningModule):
             ),
             lr=self.lr,
         )
+        """
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max=self.trainer.max_epochs,
             eta_min=1e-6,
         )
 
+        
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
         }
+        """
+
+        return {"optimizer": optimizer}
 
 
 class PixelDiffusionConditional(PixelDiffusion):
@@ -109,6 +114,8 @@ class PixelDiffusionConditional(PixelDiffusion):
         valid_dataset=None,
         batch_size=1,
         lr=1e-3,
+        num_diffusion_steps_prediction=200,
+        cylindrical_padding=False
     ):
         pl.LightningModule.__init__(self)
         self.generated_channels = generated_channels
@@ -119,9 +126,11 @@ class PixelDiffusionConditional(PixelDiffusion):
         self.valid_dataset = valid_dataset
         self.lr = lr
         self.batch_size = batch_size
+        self.num_diffusion_steps_prediction = num_diffusion_steps_prediction
         self.model = DenoisingDiffusionConditionalProcess(
             generated_channels=generated_channels,
             condition_channels=condition_channels,
+            cylindrical_padding=cylindrical_padding
         )
 
     @torch.no_grad()
@@ -145,6 +154,14 @@ class PixelDiffusionConditional(PixelDiffusion):
 
         return loss
 
+    def predict_step(self, batch, batch_idx):
+        input, output, _ = batch
+
+        # set up DDIM sampler: 
+        sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
+        loss = self.output_T(self.model(self.input_T(input), sampler=sampler))
+        return loss
+    
     def config(self):
         cfg = {
             "model_name": "PixelDiffusionConditional",
