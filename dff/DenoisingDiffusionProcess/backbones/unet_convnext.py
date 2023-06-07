@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from inspect import isfunction
 from einops import rearrange
+import torch.nn.functional as F
 
 
 def exists(x):
@@ -84,6 +85,7 @@ class ConvNextBlock(nn.Module):
 
     def __init__(self, dim, dim_out, *, time_emb_dim=None, mult=2, norm=True):
         super().__init__()
+        
         self.mlp = (
             nn.Sequential(nn.GELU(), nn.Linear(time_emb_dim, dim))
             if exists(time_emb_dim)
@@ -100,6 +102,59 @@ class ConvNextBlock(nn.Module):
         )
 
         self.res_conv = nn.Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
+
+    def forward(self, x, time_emb=None):
+        h = self.ds_conv(x)
+
+        if exists(self.mlp):
+            assert exists(time_emb), "time emb must be passed in"
+            condition = self.mlp(time_emb)
+            h = h + rearrange(condition, "b c -> b c 1 1")
+
+        h = self.net(h)
+        return h + self.res_conv(x)
+    
+
+class Conv2dPadCyclical(nn.Module):
+    """
+    2d convolution that applies "cylindrical" padding: Zero pad height, cyclical pad width.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, padding, groups=1, value=0):
+        super(Conv2dPadCyclical, self).__init__()
+        self.conv = torch.nn.Conv2d(in_channels, out_channels, kernel_size, groups=groups)
+        self.value = value
+        self.padding = padding
+
+    def forward(self, x):
+        x = F.pad(x, pad=(self.padding, self.padding, 0, 0), mode="circular")
+        x = F.pad(x, pad=(0, 0, self.padding, self.padding), mode="constant", value=self.value)
+        x = self.conv(x)
+        return x
+
+
+
+
+class CylindricalConvNextBlock(nn.Module):
+    """https://arxiv.org/abs/2201.03545, modified to allow different padding along the latitudes and longitudes."""
+
+    def __init__(self, dim, dim_out, *, time_emb_dim=None, mult=2, norm=True):
+        super().__init__()
+        self.mlp = (
+            nn.Sequential(nn.GELU(), nn.Linear(time_emb_dim, dim))
+            if exists(time_emb_dim)
+            else None
+        )
+
+        self.ds_conv = Conv2dPadCyclical(dim, dim, 7, padding=3, groups=dim)
+
+        self.net = nn.Sequential(
+            LayerNorm(dim) if norm else nn.Identity(),
+            Conv2dPadCyclical(dim, dim_out * mult, 3, padding=1),
+            nn.GELU(),
+            Conv2dPadCyclical(dim_out * mult, dim_out, 3, padding=1),
+        )
+
+        self.res_conv = torch.nn.Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
 
     def forward(self, x, time_emb=None):
         h = self.ds_conv(x)
@@ -162,11 +217,13 @@ class UnetConvNextBlock(nn.Module):
         with_time_emb=True,
         output_mean_scale=False,
         residual=False,
+        cylindrical_padding=False
     ):
         super().__init__()
         self.channels = channels
         self.residual = residual
         print("Is Time embed used ? ", with_time_emb)
+        print("Cylindrical Padding ? ", cylindrical_padding)
         self.output_mean_scale = output_mean_scale
 
         dims = [
@@ -193,68 +250,123 @@ class UnetConvNextBlock(nn.Module):
 
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
-
-            self.downs.append(
-                nn.ModuleList(
-                    [
-                        ConvNextBlock(
-                            dim_in,
-                            dim_out,
-                            time_emb_dim=time_dim,
-                            norm=ind != 0,
-                        ),
-                        ConvNextBlock(
-                            dim_out,
-                            dim_out,
-                            time_emb_dim=time_dim,
-                        ),
-                        Residual(
-                            PreNorm(
+            if cylindrical_padding:
+                self.downs.append(
+                    nn.ModuleList(
+                        [
+                            CylindricalConvNextBlock(
+                                dim_in,
                                 dim_out,
-                                LinearAttention(dim_out),
-                            )
-                        ),
-                        Downsample(dim_out) if not is_last else nn.Identity(),
-                    ]
+                                time_emb_dim=time_dim,
+                                norm=ind != 0,
+                            ),
+                            CylindricalConvNextBlock(
+                                dim_out,
+                                dim_out,
+                                time_emb_dim=time_dim,
+                            ),
+                            Residual(
+                                PreNorm(
+                                    dim_out,
+                                    LinearAttention(dim_out),
+                                )
+                            ),
+                            Downsample(dim_out) if not is_last else nn.Identity(),
+                        ]
+                    )
                 )
-            )
+            else:
+                self.downs.append(
+                    nn.ModuleList(
+                        [
+                            ConvNextBlock(
+                                dim_in,
+                                dim_out,
+                                time_emb_dim=time_dim,
+                                norm=ind != 0,
+                            ),
+                            ConvNextBlock(
+                                dim_out,
+                                dim_out,
+                                time_emb_dim=time_dim,
+                            ),
+                            Residual(
+                                PreNorm(
+                                    dim_out,
+                                    LinearAttention(dim_out),
+                                )
+                            ),
+                            Downsample(dim_out) if not is_last else nn.Identity(),
+                        ]
+                    )
+                )
 
         mid_dim = dims[-1]
-        self.mid_block1 = ConvNextBlock(mid_dim, mid_dim, time_emb_dim=time_dim)
-        self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim)))
-        self.mid_block2 = ConvNextBlock(mid_dim, mid_dim, time_emb_dim=time_dim)
+
+        if cylindrical_padding:
+            self.mid_block1 = CylindricalConvNextBlock(mid_dim, mid_dim, time_emb_dim=time_dim)
+            self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim)))
+            self.mid_block2 = CylindricalConvNextBlock(mid_dim, mid_dim, time_emb_dim=time_dim)
+        else:
+            self.mid_block1 = ConvNextBlock(mid_dim, mid_dim, time_emb_dim=time_dim)
+            self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim)))
+            self.mid_block2 = ConvNextBlock(mid_dim, mid_dim, time_emb_dim=time_dim)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
-
-            self.ups.append(
-                nn.ModuleList(
-                    [
-                        ConvNextBlock(
-                            dim_out * 2,
-                            dim_in,
-                            time_emb_dim=time_dim,
-                        ),
-                        ConvNextBlock(
-                            dim_in,
-                            dim_in,
-                            time_emb_dim=time_dim,
-                        ),
-                        Residual(
-                            PreNorm(
+            if cylindrical_padding:
+                self.ups.append(
+                    nn.ModuleList(
+                        [
+                            CylindricalConvNextBlock(
+                                dim_out * 2,
                                 dim_in,
-                                LinearAttention(dim_in),
-                            )
-                        ),
-                        Upsample(dim_in) if not is_last else nn.Identity(),
-                    ]
+                                time_emb_dim=time_dim,
+                            ),
+                            CylindricalConvNextBlock(
+                                dim_in,
+                                dim_in,
+                                time_emb_dim=time_dim,
+                            ),
+                            Residual(
+                                PreNorm(
+                                    dim_in,
+                                    LinearAttention(dim_in),
+                                )
+                            ),
+                            Upsample(dim_in) if not is_last else nn.Identity(),
+                        ]
+                    )
+                )            
+            else:
+                self.ups.append(
+                    nn.ModuleList(
+                        [
+                            ConvNextBlock(
+                                dim_out * 2,
+                                dim_in,
+                                time_emb_dim=time_dim,
+                            ),
+                            ConvNextBlock(
+                                dim_in,
+                                dim_in,
+                                time_emb_dim=time_dim,
+                            ),
+                            Residual(
+                                PreNorm(
+                                    dim_in,
+                                    LinearAttention(dim_in),
+                                )
+                            ),
+                            Upsample(dim_in) if not is_last else nn.Identity(),
+                        ]
+                    )
                 )
-            )
 
         out_dim = default(out_dim, channels)
         self.final_conv = nn.Sequential(
             ConvNextBlock(dim, dim),
-            nn.Conv2d(dim, out_dim, 1),
+            nn.Conv2d(dim, out_dim, 1),  # kernel is 1x1 so padding doesn't matter anyway
             # nn.Tanh() # ADDED
         )
 
