@@ -75,6 +75,16 @@ class PixelDiffusion(pl.LightningModule):
             )
         else:
             return None
+        
+    def test_dataloader(self):
+        if self.test_dataset is not None:
+            return DataLoader(
+                self.test_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+            )
+        else:
+            return None
 
     def configure_optimizers(self):
         # Cosine Annealing LR Scheduler
@@ -112,6 +122,7 @@ class PixelDiffusionConditional(PixelDiffusion):
         condition_channels,
         train_dataset=None,
         valid_dataset=None,
+        test_dataset=None,
         batch_size=1,
         lr=1e-3,
         num_diffusion_steps_prediction=200,
@@ -121,9 +132,9 @@ class PixelDiffusionConditional(PixelDiffusion):
         self.generated_channels = generated_channels
         self.condition_channels = condition_channels
         self.batch_size = batch_size
-        self.lr = lr
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
+        self.test_dataset = test_dataset
         self.lr = lr
         self.batch_size = batch_size
         self.num_diffusion_steps_prediction = num_diffusion_steps_prediction
@@ -153,14 +164,22 @@ class PixelDiffusionConditional(PixelDiffusion):
         self.log("val_loss", loss, prog_bar=True, on_epoch=True)
 
         return loss
+    
+    def test_step(self, batch, batch_idx):
+        input, output, _ = batch
+        loss = self.model.p_loss(self.input_T(output), self.input_T(input))
+
+        self.log("test_loss", loss, prog_bar=True, on_epoch=True)
+
+        return loss
 
     def predict_step(self, batch, batch_idx):
-        input, output, _ = batch
+        input, _, _ = batch
 
         # set up DDIM sampler: 
         sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
-        loss = self.output_T(self.model(self.input_T(input), sampler=sampler))
-        return loss
+        return self.output_T(self.model(self.input_T(input), sampler=sampler))
+        
     
     def config(self):
         cfg = {
