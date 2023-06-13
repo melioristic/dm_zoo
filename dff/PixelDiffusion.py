@@ -98,21 +98,16 @@ class PixelDiffusion(pl.LightningModule):
             ),
             lr=self.lr,
         )
-        """
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            T_max=self.trainer.max_epochs,
-            eta_min=1e-6,
+            patience = 5
         )
-
         
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
+            "monitor": "val_loss"
         }
-        """
-
-        return {"optimizer": optimizer}
 
 
 class PixelDiffusionConditional(PixelDiffusion):
