@@ -25,7 +25,7 @@ Mentors:
 [Florian Pinault](https://github.com/floriankrb)
 
 ## License
-This project contains code from [DiffusionFastForward](https://github.com/mikonvergence/DiffusionFastForward), WeatherBench is licensed under the [MIT License](https://github.com/melioristic/benchmark/blob/main/WEATHERBENCH_LICENSE). Our changes to the code are licensed under the [Apache 2.0 License](https://github.com/melioristic/benchmark/blob/main/LICENSE).
+This project contains code from [DiffusionFastForward](https://github.com/mikonvergence/DiffusionFastForward), WeatherBench is licensed under the [MIT License](https://github.com/melioristic/dm_zoo/blob/main/DiffusionFastForward_LICENSE). Our changes to the code are licensed under the [Apache 2.0 License](https://github.com/melioristic/dm_zoo/blob/main/LICENSE).
 
 ## Project status
 Under active developement.
