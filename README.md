@@ -11,7 +11,7 @@ The following implementations of diffusion models are tested:
 Installation options will be included in the future.
 
 ## Roadmap
-This repository is part of a [ECMWF Code4Earth Project](https://github.com/ECMWFCode4Earth/diffusion-models-for-weather-prediction), which takes place between March 1 2023 and September 20 2023.
+This repository is part of a [ECMWF Code4Earth Project](https://github.com/ECMWFCode4Earth/diffusion-models-for-weather-prediction), which takes place between May 1 2023 and September 20 2023.
 
 ## Contributing
 Script on guidelines for contributions will be added in the future.
