@@ -2,7 +2,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, SubsetRandomSampler
 
 from .DenoisingDiffusionProcess import *
 
@@ -16,6 +16,7 @@ class PixelDiffusion(pl.LightningModule):
         num_timesteps=1000,
         batch_size=1,
         lr=1e-3,
+        use_random_validation_subset=False
     ):
         super().__init__()
         self.train_dataset = train_dataset
@@ -67,6 +68,8 @@ class PixelDiffusion(pl.LightningModule):
             return None
 
     def val_dataloader(self):
+        
+
         if self.valid_dataset is not None:
             return DataLoader(
                 self.valid_dataset,
@@ -121,7 +124,8 @@ class PixelDiffusionConditional(PixelDiffusion):
         batch_size=1,
         lr=1e-3,
         num_diffusion_steps_prediction=200,
-        cylindrical_padding=False
+        cylindrical_padding=False,
+        use_random_validation_subset=False
     ):
         pl.LightningModule.__init__(self)
         self.generated_channels = generated_channels
@@ -151,12 +155,30 @@ class PixelDiffusionConditional(PixelDiffusion):
         self.log("train_loss", loss)
 
         return loss
-
+    
+    def val_dataloader(self):
+        if self.valid_dataset is not None:
+            indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
+            return DataLoader(
+                self.valid_dataset,
+                sampler=SubsetRandomSampler(indices=indices),
+                batch_size=self.batch_size,
+                shuffle=False,
+            )
+        else:
+            return None
+        
     def validation_step(self, batch, batch_idx):
         input, output, _ = batch
+        # standard loss:
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
-
         self.log("val_loss", loss, prog_bar=True, on_epoch=True)
+
+        # full reconstruction loss:
+        sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
+        prediction = self.output_T(self.model(self.input_T(input), sampler=sampler))
+        reconstruction_loss = F.mse_loss(prediction, output)
+        self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
 
         return loss
     
