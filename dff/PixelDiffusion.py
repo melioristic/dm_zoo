@@ -16,7 +16,8 @@ class PixelDiffusion(pl.LightningModule):
         num_timesteps=1000,
         batch_size=1,
         lr=1e-3,
-        use_random_validation_subset=False
+        use_random_validation_subset=False,
+        loss_fn=F.mse_loss,
     ):
         super().__init__()
         self.train_dataset = train_dataset
@@ -27,6 +28,7 @@ class PixelDiffusion(pl.LightningModule):
         self.model = DenoisingDiffusionProcess(
             num_timesteps=num_timesteps,
             generated_channels=generated_channels,
+            loss_fn=loss_fn,
         )
 
     @torch.no_grad()
@@ -125,7 +127,8 @@ class PixelDiffusionConditional(PixelDiffusion):
         lr=1e-3,
         num_diffusion_steps_prediction=200,
         cylindrical_padding=False,
-        use_random_validation_subset=False
+        use_random_validation_subset=False,
+        loss_fn = F.mse_loss,
     ):
         pl.LightningModule.__init__(self)
         self.generated_channels = generated_channels
@@ -140,7 +143,8 @@ class PixelDiffusionConditional(PixelDiffusion):
         self.model = DenoisingDiffusionConditionalProcess(
             generated_channels=generated_channels,
             condition_channels=condition_channels,
-            cylindrical_padding=cylindrical_padding
+            cylindrical_padding=cylindrical_padding,
+            loss_fn=loss_fn
         )
 
     @torch.no_grad()
