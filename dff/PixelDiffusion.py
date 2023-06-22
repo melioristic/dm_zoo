@@ -59,38 +59,6 @@ class PixelDiffusion(pl.LightningModule):
 
         return loss
 
-    def train_dataloader(self):
-        if self.train_dataset is not None:
-            return DataLoader(
-                self.train_dataset,
-                batch_size=self.batch_size,
-                shuffle=True,
-            )
-        else:
-            return None
-
-    def val_dataloader(self):
-        
-
-        if self.valid_dataset is not None:
-            return DataLoader(
-                self.valid_dataset,
-                batch_size=self.batch_size,
-                shuffle=False,
-            )
-        else:
-            return None
-        
-    def test_dataloader(self):
-        if self.test_dataset is not None:
-            return DataLoader(
-                self.test_dataset,
-                batch_size=self.batch_size,
-                shuffle=False,
-            )
-        else:
-            return None
-
     def configure_optimizers(self):
         # Cosine Annealing LR Scheduler
 
@@ -105,13 +73,15 @@ class PixelDiffusion(pl.LightningModule):
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            patience = 5
+            patience = 10,
+            factor=0.2,
+            min_lr=1e-8
         )
         
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
-            "monitor": "val_loss"
+            "monitor": "val_loss_new"
         }
 
 
@@ -147,47 +117,56 @@ class PixelDiffusionConditional(PixelDiffusion):
             loss_fn=loss_fn
         )
 
+    def train_dataloader(self):
+        if self.train_dataset is not None:
+            return DataLoader(
+                self.train_dataset,
+                num_workers=1,
+                batch_size=self.batch_size,
+                # shuffle=True,
+            )
+        else:
+            return None
+        
+    def test_dataloader(self):
+        if self.test_dataset is not None:
+            return DataLoader(
+                self.test_dataset,
+                num_workers=1,
+                batch_size=self.batch_size,
+                # shuffle=False,
+            )
+        else:
+            return None
+        
+    def val_dataloader(self):
+        if self.valid_dataset is not None:
+            # indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
+            return DataLoader(
+                self.valid_dataset,
+                num_workers=1,
+                # sampler=SubsetRandomSampler(indices=indices),
+                batch_size=self.batch_size,
+                # shuffle=False,
+            )
+        else:
+            return None
+    
     @torch.no_grad()
     def forward(self, batch, *args, **kwargs):
-        input, _, _ = batch
+        input, _ = batch
         return self.output_T(self.model(self.input_T(input), *args, **kwargs))
 
     def training_step(self, batch, batch_idx):
-        input, output, _ = batch
+        input, output = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
         self.log("train_loss", loss)
 
         return loss
     
-    def val_dataloader(self):
-        if self.valid_dataset is not None:
-            indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
-            return DataLoader(
-                self.valid_dataset,
-                sampler=SubsetRandomSampler(indices=indices),
-                batch_size=self.batch_size,
-                shuffle=False,
-            )
-        else:
-            return None
-        
-    def validation_step(self, batch, batch_idx):
-        input, output, _ = batch
-        # standard loss:
-        loss = self.model.p_loss(self.input_T(output), self.input_T(input))
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
-
-        # full reconstruction loss:
-        sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
-        prediction = self.output_T(self.model(self.input_T(input), sampler=sampler))
-        reconstruction_loss = F.mse_loss(prediction, output)
-        self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
-
-        return loss
-    
     def test_step(self, batch, batch_idx):
-        input, output, _ = batch
+        input, output = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
         self.log("test_loss", loss, prog_bar=True, on_epoch=True)
@@ -195,12 +174,23 @@ class PixelDiffusionConditional(PixelDiffusion):
         return loss
 
     def predict_step(self, batch, batch_idx):
-        input, _, _ = batch
-
+        input, _ = batch
         # set up DDIM sampler: 
         sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
         return self.output_T(self.model(self.input_T(input), sampler=sampler))
-        
+
+    def validation_step(self, batch, batch_idx):
+        input, output = batch
+        # standard loss:
+        loss = self.model.p_loss(self.input_T(output), self.input_T(input))
+        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
+        # full reconstruction loss:
+        sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
+        prediction = self.output_T(self.model(self.input_T(input), sampler=sampler))
+        reconstruction_loss = F.mse_loss(prediction, output)
+        self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
+
+        return loss       
     
     def config(self):
         cfg = {

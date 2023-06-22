@@ -218,7 +218,6 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         """
         Assumes output and input are in [-1,+1] range
         """
-
         b, c, h, w = output.shape
         device = output.device
 
