@@ -161,7 +161,7 @@ class PixelDiffusionConditional(PixelDiffusion):
         input, output = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
-        self.log("train_loss", loss)
+        self.log("test/train_loss", loss)
 
         return loss
     
@@ -169,7 +169,7 @@ class PixelDiffusionConditional(PixelDiffusion):
         input, output = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
-        self.log("test_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("test/test_loss", loss, prog_bar=True, on_epoch=True)
 
         return loss
 
@@ -183,12 +183,12 @@ class PixelDiffusionConditional(PixelDiffusion):
         input, output = batch
         # standard loss:
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("test/val_loss", loss, prog_bar=True, on_epoch=True)
         # full reconstruction loss:
         sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
         prediction = self.output_T(self.model(self.input_T(input), sampler=sampler))
         reconstruction_loss = F.mse_loss(prediction, output)
-        self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
+        self.log("test/val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
 
         return loss       
     

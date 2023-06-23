@@ -135,3 +135,4 @@ lightning_logs/
 *.out
 
 # pycache
+**/__pycache__/
