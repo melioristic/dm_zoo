@@ -123,15 +123,21 @@ class PixelDiffusionConditional(PixelDiffusion):
 
     def _get_scheduler(self, optimizer):
         # for experimental purposes only. All epoch related things are in respect to the "6x longer" epoch length.
-        lr_scheduler_configs = {
-            "Constant": torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: self.lr),
-            "ReduceLROnPlateau": torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience = 5, factor=0.2, min_lr=1e-8),
-            "StepLR": torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=30, gamma=0.2),
-            "CosineAnnealingLR": torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=60, eta_min=1e-6),  # assume this is given in epochs
-            "CosineAnnealingWarmRestarts": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=20, T_mult=2, eta_min=1e-6),
-            "CosineAnnealingWarmupRestarts": CosineAnnealingWarmupRestarts(optimizer=optimizer, first_cycle_steps=40, cycle_mult=2, max_lr=self.lr, min_lr=1e-6, warmup_steps=5, gamma=0.5)
-        }
-        return lr_scheduler_configs[self.lr_scheduler_name]
+        match self.lr_scheduler_name:
+            case "Constant":
+                return torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 1)
+            case "ReduceLROnPlateau":
+                return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience = 5, factor=0.2, min_lr=1e-8)
+            case "StepLR":
+                return torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=30, gamma=0.2)
+            case "CosineAnnealingLR":
+                return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=20, T_mult=2, eta_min=1e-6)
+            case "CosineAnnealingWarmRestarts":
+                return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=20, T_mult=2, eta_min=1e-6)
+            case "CosineAnnealingWarmupRestarts":
+                return CosineAnnealingWarmupRestarts(optimizer=optimizer, first_cycle_steps=40, cycle_mult=2, max_lr=self.lr, min_lr=1e-6, warmup_steps=5, gamma=0.5)
+            case _:
+                raise ValueError("Invalid argument passed to scheduler configuration.")
 
     def train_dataloader(self):
         if self.train_dataset is not None:
