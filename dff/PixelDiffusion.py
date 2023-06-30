@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, SubsetRandomSampler
-
+import math
 from .DenoisingDiffusionProcess import *
 
 
@@ -97,7 +97,6 @@ class PixelDiffusionConditional(PixelDiffusion):
         lr=1e-3,
         num_diffusion_steps_prediction=200,
         cylindrical_padding=False,
-        use_random_validation_subset=False,
         loss_fn = F.mse_loss,
         num_workers = 1,
         lr_scheduler_name="Constant"
@@ -131,7 +130,7 @@ class PixelDiffusionConditional(PixelDiffusion):
             case "StepLR":
                 return torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=30, gamma=0.2)
             case "CosineAnnealingLR":
-                return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=20, T_mult=2, eta_min=1e-6)
+                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=60, eta_min=1e-6)
             case "CosineAnnealingWarmRestarts":
                 return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=20, T_mult=2, eta_min=1e-6)
             case "CosineAnnealingWarmupRestarts":
