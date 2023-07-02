@@ -121,20 +121,20 @@ class PixelDiffusionConditional(PixelDiffusion):
         )
 
     def _get_scheduler(self, optimizer):
-        # for experimental purposes only. All epoch related things are in respect to the "6x longer" epoch length.
+        # for experimental purposes only. All epoch related things are in respect to the "1x longer" epoch length.
         match self.lr_scheduler_name:
             case "Constant":
                 return torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 1)
             case "ReduceLROnPlateau":
-                return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience = 5, factor=0.2, min_lr=1e-8)
+                return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience = 30, factor=0.2, min_lr=1e-8)
             case "StepLR":
-                return torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=30, gamma=0.2)
+                return torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=180, gamma=0.2)
             case "CosineAnnealingLR":
-                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=60, eta_min=1e-6)
+                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=360, eta_min=1e-6)
             case "CosineAnnealingWarmRestarts":
-                return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=20, T_mult=2, eta_min=1e-6)
+                return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=120, T_mult=2, eta_min=1e-6)
             case "CosineAnnealingWarmupRestarts":
-                return CosineAnnealingWarmupRestarts(optimizer=optimizer, first_cycle_steps=40, cycle_mult=2, max_lr=self.lr, min_lr=1e-6, warmup_steps=5, gamma=0.5)
+                return CosineAnnealingWarmupRestarts(optimizer=optimizer, first_cycle_steps=240, cycle_mult=2, max_lr=self.lr, min_lr=1e-6, warmup_steps=5, gamma=0.5)
             case _:
                 raise ValueError("Invalid argument passed to scheduler configuration.")
 
@@ -144,7 +144,7 @@ class PixelDiffusionConditional(PixelDiffusion):
                 self.train_dataset,
                 num_workers=self.num_workers,
                 batch_size=self.batch_size,
-                # shuffle=True,
+                shuffle=True,
             )
         else:
             return None
@@ -155,31 +155,31 @@ class PixelDiffusionConditional(PixelDiffusion):
                 self.test_dataset,
                 num_workers=self.num_workers,
                 batch_size=self.batch_size,
-                # shuffle=False,
+                shuffle=False,
             )
         else:
             return None
         
     def val_dataloader(self):
         if self.valid_dataset is not None:
-            # indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
+            indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
             return DataLoader(
                 self.valid_dataset,
                 num_workers=self.num_workers,
-                # sampler=SubsetRandomSampler(indices=indices),
+                sampler=SubsetRandomSampler(indices=indices),
                 batch_size=self.batch_size,
-                # shuffle=False,
+                shuffle=False,
             )
         else:
             return None
     
     @torch.no_grad()
     def forward(self, batch, *args, **kwargs):
-        input, _ = batch
+        input, _, _ = batch
         return self.output_T(self.model(self.input_T(input), *args, **kwargs))
 
     def training_step(self, batch, batch_idx):
-        input, output = batch
+        input, output, _ = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
         self.log("train_loss", loss)
@@ -187,7 +187,7 @@ class PixelDiffusionConditional(PixelDiffusion):
         return loss
     
     def test_step(self, batch, batch_idx):
-        input, output = batch
+        input, output, _ = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
         self.log("test_loss", loss, prog_bar=True, on_epoch=True)
@@ -195,13 +195,13 @@ class PixelDiffusionConditional(PixelDiffusion):
         return loss
 
     def predict_step(self, batch, batch_idx):
-        input, _ = batch
+        input, _, _ = batch
         # set up DDIM sampler: 
         sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
         return self.output_T(self.model(self.input_T(input), sampler=sampler))
 
     def validation_step(self, batch, batch_idx):
-        input, output = batch
+        input, output, _ = batch
         # standard loss:
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
         self.log("val_loss", loss, prog_bar=True, on_epoch=True)
@@ -226,14 +226,6 @@ class PixelDiffusionConditional(PixelDiffusion):
             lr=self.lr,
         )
         scheduler = self._get_scheduler(optimizer=optimizer)
-        """
-        torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            patience = 10,
-            factor=0.2,
-            min_lr=1e-8
-        )
-        """
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
