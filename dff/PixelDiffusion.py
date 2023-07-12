@@ -144,7 +144,7 @@ class PixelDiffusionConditional(PixelDiffusion):
                 self.train_dataset,
                 num_workers=self.num_workers,
                 batch_size=self.batch_size,
-                shuffle=True,
+                # shuffle=False,
             )
         else:
             return None
@@ -155,31 +155,31 @@ class PixelDiffusionConditional(PixelDiffusion):
                 self.test_dataset,
                 num_workers=self.num_workers,
                 batch_size=self.batch_size,
-                shuffle=False,
+                # shuffle=False,
             )
         else:
             return None
         
     def val_dataloader(self):
         if self.valid_dataset is not None:
-            indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
+            # indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
             return DataLoader(
                 self.valid_dataset,
                 num_workers=self.num_workers,
-                sampler=SubsetRandomSampler(indices=indices),
+                # sampler=SubsetRandomSampler(indices=indices),
                 batch_size=self.batch_size,
-                shuffle=False,
+                # shuffle=False,
             )
         else:
             return None
     
     @torch.no_grad()
     def forward(self, batch, *args, **kwargs):
-        input, _, _ = batch
+        input, _ = batch
         return self.output_T(self.model(self.input_T(input), *args, **kwargs))
 
     def training_step(self, batch, batch_idx):
-        input, output, _ = batch
+        input, output = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
         self.log("train_loss", loss)
@@ -187,7 +187,7 @@ class PixelDiffusionConditional(PixelDiffusion):
         return loss
     
     def test_step(self, batch, batch_idx):
-        input, output, _ = batch
+        input, output = batch
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
 
         self.log("test_loss", loss, prog_bar=True, on_epoch=True)
@@ -195,13 +195,13 @@ class PixelDiffusionConditional(PixelDiffusion):
         return loss
 
     def predict_step(self, batch, batch_idx):
-        input, _, _ = batch
+        input, target = batch
         # set up DDIM sampler: 
         sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
         return self.output_T(self.model(self.input_T(input), sampler=sampler))
 
     def validation_step(self, batch, batch_idx):
-        input, output, _ = batch
+        input, output = batch
         # standard loss:
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
         self.log("val_loss", loss, prog_bar=True, on_epoch=True)
