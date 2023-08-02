@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 from .forward import *
 from .samplers import *
 from .backbones.unet_convnext import *
+from .backbones.unet_palette import UNet_Palette
 
 
 class DenoisingDiffusionProcess(nn.Module):
@@ -133,6 +134,7 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         self,
         generated_channels,
         condition_channels,
+        unet_type="UNet_Palette",
         loss_fn=F.mse_loss,
         schedule="linear",
         num_timesteps=1000,
@@ -154,15 +156,30 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         )
 
         # Neural Network Backbone
-        self.model = UnetConvNextBlock(
-            dim=64,
-            dim_mults=(1, 2, 4, 8),
-            channels=self.generated_channels + condition_channels,
-            out_dim=self.generated_channels,
-            with_time_emb=True,
-            cylindrical_padding=cylindrical_padding
-        )
-
+        if unet_type == "UnetConvNextBlock":
+            self.model = UnetConvNextBlock(
+                dim=64,
+                dim_mults=(1, 2, 4, 8),
+                channels=self.generated_channels + condition_channels,
+                out_dim=self.generated_channels,
+                with_time_emb=True,
+                cylindrical_padding=cylindrical_padding
+            )
+        elif unet_type == "UNet_Palette":
+            self.model = UNet_Palette(
+                in_channel=generated_channels+condition_channels,
+                inner_channel=64, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+                out_channel=generated_channels,
+                res_blocks=2,  # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+                attn_res = [16,], # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+                dropout=0.2, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+                channel_mults=(1, 2, 4, 8), # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+                use_checkpoint=False,
+                use_fp16=False,
+                num_head_channels=32, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+            )
+        else:
+            raise NotImplementedError("Invalid type of UNet backbone")
         # defaults to a DDPM sampler if None is provided
         self.sampler = (
             DDPM_Sampler(num_timesteps=self.num_timesteps)
