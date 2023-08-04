@@ -134,10 +134,11 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         self,
         generated_channels,
         condition_channels,
-        unet_type="UNet_Palette",
+        unet_type="UNetConvNextBlock",
         loss_fn=F.mse_loss,
         schedule="linear",
         num_timesteps=1000,
+        dims_mults=(1, 2, 4, 8),
         sampler=None,
         cylindrical_padding=False
     ):
@@ -159,7 +160,7 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         if unet_type == "UnetConvNextBlock":
             self.model = UnetConvNextBlock(
                 dim=64,
-                dim_mults=(1, 2, 4, 8),
+                dim_mults=dims_mults,
                 channels=self.generated_channels + condition_channels,
                 out_dim=self.generated_channels,
                 with_time_emb=True,
@@ -173,7 +174,7 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
                 res_blocks=2,  # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
                 attn_res = [16,], # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
                 dropout=0.2, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
-                channel_mults=(1, 2, 4, 8), # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+                channel_mults=dims_mults, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
                 use_checkpoint=False,
                 use_fp16=False,
                 num_head_channels=32, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
@@ -181,6 +182,7 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         else:
             raise NotImplementedError("Invalid type of UNet backbone")
         # defaults to a DDPM sampler if None is provided
+        
         self.sampler = (
             DDPM_Sampler(num_timesteps=self.num_timesteps)
             if sampler is None
