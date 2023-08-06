@@ -7,117 +7,38 @@ import math
 from .DenoisingDiffusionProcess import *
 
 
-class PixelDiffusion(pl.LightningModule):
+
+
+class PixelDiffusionConditional(pl.LightningModule):
     def __init__(
         self,
+        args,
         generated_channels,
-        train_dataset=None,
-        valid_dataset=None,
-        num_timesteps=1000,
-        batch_size=1,
-        lr=1e-3,
-        use_random_validation_subset=False,
-        loss_fn=F.mse_loss,
-    ):
-        super().__init__()
-        self.train_dataset = train_dataset
-        self.valid_dataset = valid_dataset
-        self.lr = lr
-        self.batch_size = batch_size
-
-        self.model = DenoisingDiffusionProcess(
-            num_timesteps=num_timesteps,
-            generated_channels=generated_channels,
-            loss_fn=loss_fn,
-        )
-
-    @torch.no_grad()
-    def forward(self, *args, **kwargs):
-        return self.output_T(self.model(*args, **kwargs))
-
-    def input_T(self, input):
-        # By default, let the model accept samples in [0,1] range, and transform them automatically
-        return (input.clip(0, 1).mul_(2)).sub_(1)
-
-    def output_T(self, input):
-        # Inverse transform of model output from [-1,1] to [0,1] range
-        return (input.add_(1)).div_(2)
-
-    def training_step(self, batch, batch_idx):
-        images = batch
-        loss = self.model.p_loss(self.input_T(images))
-
-        self.log("train_loss", loss)
-
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        images = batch
-        loss = self.model.p_loss(self.input_T(images))
-
-        self.log("val_loss", loss)
-
-        return loss
-
-    def configure_optimizers(self):
-        # Cosine Annealing LR Scheduler
-
-        optimizer = torch.optim.AdamW(
-            list(
-                filter(
-                    lambda p: p.requires_grad,
-                    self.model.parameters(),
-                )
-            ),
-            lr=self.lr,
-        )
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            patience = 10,
-            factor=0.2,
-            min_lr=1e-8
-        )
-        
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": scheduler,
-            "monitor": "val_loss_new"
-        }
-
-
-class PixelDiffusionConditional(PixelDiffusion):
-    def __init__(
-        self,
-        generated_channels,
-        condition_channels,
+        conditioning_channels,
+        loss_fn,
+        sampler,
         train_dataset=None,
         valid_dataset=None,
         test_dataset=None,
-        batch_size=1,
-        lr=1e-3,
-        num_diffusion_steps_prediction=200,
-        cylindrical_padding=False,
-        loss_fn = F.mse_loss,
-        num_workers = 1,
-        lr_scheduler_name="Constant"
     ):
         pl.LightningModule.__init__(self)
-        self.generated_channels = generated_channels
-        self.condition_channels = condition_channels
-        self.batch_size = batch_size
+        
+        self.lr_scheduler_name = args.lr_scheduler_name
+        self.batch_size = args.batch_size
+        self.lr = args.learning_rate
+        self.num_workers=args.num_workers
+        self.num_diffusion_steps_inference=args.num_diffusion_steps_inference
+
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
-        self.test_dataset = test_dataset
-        self.lr = lr
-        self.batch_size = batch_size
-        self.num_diffusion_steps_prediction = num_diffusion_steps_prediction
-        self.num_workers=num_workers
-        self.lr_scheduler_name = lr_scheduler_name
+        self.test_dataset = test_dataset        
+
         self.model = DenoisingDiffusionConditionalProcess(
+            args,
             generated_channels=generated_channels,
-            condition_channels=condition_channels,
-            cylindrical_padding=cylindrical_padding,
-            loss_fn=loss_fn
+            conditioning_channels=conditioning_channels,
+            loss_fn=loss_fn,
+            sampler=sampler
         )
 
     def _get_scheduler(self, optimizer):
@@ -197,7 +118,7 @@ class PixelDiffusionConditional(PixelDiffusion):
     def predict_step(self, batch, batch_idx):
         input, target = batch
         # set up DDIM sampler: 
-        sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
+        sampler = DDIM_Sampler(self.num_diffusion_steps_inference, self.model.num_timesteps)
         return self.output_T(self.model(self.input_T(input), sampler=sampler))
 
     def validation_step(self, batch, batch_idx):
@@ -206,16 +127,14 @@ class PixelDiffusionConditional(PixelDiffusion):
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
         self.log("val_loss", loss, prog_bar=True, on_epoch=True)
         # full reconstruction loss:
-        sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
+        sampler = DDIM_Sampler(self.num_diffusion_steps_inference, self.model.num_timesteps)
         prediction = self.output_T(self.model(self.input_T(input), sampler=sampler))
         reconstruction_loss = F.mse_loss(prediction, output)
         self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
-
         return loss       
     
     def configure_optimizers(self):
         # Cosine Annealing LR Scheduler
-
         optimizer = torch.optim.AdamW(
             list(
                 filter(
@@ -232,6 +151,15 @@ class PixelDiffusionConditional(PixelDiffusion):
             "monitor": "val_loss_new"
         }
     
+    def input_T(self, input):
+        # By default, let the model accept samples in [0,1] range, and transform them automatically
+        return (input.clip(0, 1).mul_(2)).sub_(1)
+
+    def output_T(self, input):
+        # Inverse transform of model output from [-1,1] to [0,1] range
+        return (input.add_(1)).div_(2)
+    
+    """
     def config(self):
         cfg = {
             "model_name": "PixelDiffusionConditional",
@@ -243,7 +171,19 @@ class PixelDiffusionConditional(PixelDiffusion):
             },
         }
         return cfg
-
+    """
+    
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = parent_parser.add_argument_group("ConditionalDiffusionModel")
+        parser.add_argument("--lr_scheduler_name", type=str, default="Constant", 
+                            choices= ["Constant", "ReduceLROnPlateau", "StepLR", "CosineAnnealingLR", 
+                                      "CosineAnnealingWarmRestarts", "CosineAnnealingWarmupRestarts"]) 
+        parser.add_argument("--num_diffusion_steps_inference", type=int, default=200) 
+        parser.add_argument("--batch_size", type=int, default=1)
+        parser.add_argument("--learning_rate", type=int, default=1E-3)     
+        parser.add_argument("--num_workers", type=int, default=0)
+        return parent_parser
 
 
 from torch.optim.lr_scheduler import _LRScheduler
