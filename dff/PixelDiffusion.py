@@ -1,12 +1,13 @@
 import pytorch_lightning as pl
 import torch
+import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, SubsetRandomSampler
 import math
 from .DenoisingDiffusionProcess import *
 
-
+from pytorch_lightning import loggers as pl_loggers
 
 
 class PixelDiffusionConditional(pl.LightningModule):
@@ -74,7 +75,7 @@ class PixelDiffusionConditional(pl.LightningModule):
         if self.test_dataset is not None:
             return DataLoader(
                 self.test_dataset,
-                num_workers=self.num_workers,
+                num_workers=1, # self.num_workers,
                 batch_size=self.batch_size,
                 # shuffle=False,
             )
@@ -86,7 +87,7 @@ class PixelDiffusionConditional(pl.LightningModule):
             # indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
             return DataLoader(
                 self.valid_dataset,
-                num_workers=self.num_workers,
+                num_workers=1, # self.num_workers,
                 # sampler=SubsetRandomSampler(indices=indices),
                 batch_size=self.batch_size,
                 # shuffle=False,
@@ -130,8 +131,17 @@ class PixelDiffusionConditional(pl.LightningModule):
         sampler = DDIM_Sampler(self.num_diffusion_steps_inference, self.model.num_timesteps)
         prediction = self.output_T(self.model(self.input_T(input), sampler=sampler))
         reconstruction_loss = F.mse_loss(prediction, output)
+
+        # log images
+        print(output.shape, prediction.shape)
+        if batch_idx == 0:
+            n_images = 5
+            print(torch.concat([output[:n_images], prediction[:n_images]], dim=1).shape)
+            grid = torchvision.utils.make_grid(torch.concat([output[:n_images], prediction[:n_images]], dim=0), nrow=5) # plot the first n_images images.
+            self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
+        
         self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
-        return loss       
+        return loss
     
     def configure_optimizers(self):
         # Cosine Annealing LR Scheduler
@@ -173,8 +183,8 @@ class PixelDiffusionConditional(pl.LightningModule):
         return cfg
     """
 
-
 from torch.optim.lr_scheduler import _LRScheduler
+
 
 class CosineAnnealingWarmupRestarts(_LRScheduler):
     """
