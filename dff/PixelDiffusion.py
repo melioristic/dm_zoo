@@ -12,7 +12,7 @@ from .DenoisingDiffusionProcess import *
 class PixelDiffusionConditional(pl.LightningModule):
     def __init__(
         self,
-        args,
+        config,
         generated_channels,
         conditioning_channels,
         loss_fn,
@@ -23,18 +23,18 @@ class PixelDiffusionConditional(pl.LightningModule):
     ):
         pl.LightningModule.__init__(self)
         
-        self.lr_scheduler_name = args.lr_scheduler_name
-        self.batch_size = args.batch_size
-        self.lr = args.learning_rate
-        self.num_workers=args.num_workers
-        self.num_diffusion_steps_inference=args.num_diffusion_steps_inference
+        self.lr_scheduler_name = config.lr_scheduler_name
+        self.batch_size = config.batch_size
+        self.lr = config.learning_rate
+        self.num_workers=config.num_workers
+        self.num_diffusion_steps_inference=config.num_diffusion_steps_inference
 
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
         self.test_dataset = test_dataset        
 
         self.model = DenoisingDiffusionConditionalProcess(
-            args,
+            config.denoising_diffusion_process,
             generated_channels=generated_channels,
             conditioning_channels=conditioning_channels,
             loss_fn=loss_fn,
@@ -172,18 +172,6 @@ class PixelDiffusionConditional(pl.LightningModule):
         }
         return cfg
     """
-    
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = parent_parser.add_argument_group("ConditionalDiffusionModel")
-        parser.add_argument("--lr_scheduler_name", type=str, default="Constant", 
-                            choices= ["Constant", "ReduceLROnPlateau", "StepLR", "CosineAnnealingLR", 
-                                      "CosineAnnealingWarmRestarts", "CosineAnnealingWarmupRestarts"]) 
-        parser.add_argument("--num_diffusion_steps_inference", type=int, default=200) 
-        parser.add_argument("--batch_size", type=int, default=1)
-        parser.add_argument("--learning_rate", type=int, default=1E-3)     
-        parser.add_argument("--num_workers", type=int, default=0)
-        return parent_parser
 
 
 from torch.optim.lr_scheduler import _LRScheduler

@@ -16,7 +16,7 @@ from .backbones.unet_palette import UNet_Palette
 class DenoisingDiffusionConditionalProcess(nn.Module):
     def __init__(
         self,
-        args,
+        config,
         generated_channels,
         conditioning_channels,
         loss_fn,
@@ -27,40 +27,40 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
         # Basic Params
         self.generated_channels = generated_channels
         self.condition_channels = conditioning_channels
-        self.num_timesteps = args.num_diffusion_steps
+        self.num_timesteps = config.num_diffusion_steps
         self.loss_fn = loss_fn
 
         # Forward Process
         self.forward_process = GaussianForwardProcess(
             num_timesteps=self.num_timesteps,
-            schedule=args.noise_schedule,
+            schedule=config.noise_schedule,
         )
 
         # Neural Network Backbone
-        if args.unet_type == "UnetConvNextBlock":
+        if config.unet_type == "UnetConvNextBlock":
             self.model = UnetConvNextBlock(
-                dim=args.num_channels_base,
-                dim_mults=args.dims_mults,
+                dim=config.num_channels_base,
+                dim_mults=config.dims_mults,
                 channels=self.generated_channels + self.condition_channels,
                 out_dim=self.generated_channels,
                 with_time_emb=True,
-                use_cyclical_padding=args.use_cyclical_padding
+                use_cyclical_padding=config.use_cyclical_padding
             )
-        elif args.unet_type == "UNet_Palette":
+        elif config.unet_type == "UNet_Palette":
             self.model = UNet_Palette(
                 in_channel=self.generated_channels+self.condition_channels,
-                inner_channel=args.num_channels_base, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+                inner_channel=config.num_channels_base, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
                 out_channel=self.generated_channels,
                 res_blocks=2,  # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
                 attn_res = [16,], # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
                 dropout=0.2, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
-                channel_mults=args.dims_mults, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
+                channel_mults=config.dims_mults, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
                 use_checkpoint=False,
                 use_fp16=False,
                 num_head_channels=32, # from https://github.com/Janspiry/Palette-Image-to-Image-Diffusion-Models/blob/main/config/inpainting_celebahq.json
             )
         else:
-            raise NotImplementedError("Invalid type of UNet backbone")
+            raise NotImplementedError(f"Invalid type of UNet backbone: {config.unet_type}")
         # defaults to a DDPM sampler if None is provided
         
         self.sampler = (
@@ -137,14 +137,3 @@ class DenoisingDiffusionConditionalProcess(nn.Module):
 
         # apply loss
         return self.loss_fn(noise, noise_hat)
-
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = parent_parser.add_argument_group("DiffusionProcess")
-        parser.add_argument("--unet_type", type=str, default="UnetConvNextBlock") 
-        parser.add_argument("--noise_schedule", type=str, default="linear") 
-        parser.add_argument("--use_cyclical_padding", type=bool, default=False)
-        parser.add_argument("--num_diffusion_steps", type=int, default=1000)           
-        parser.add_argument("--dims_mults", type=tuple, default=(1,2,4,8))
-        parser.add_argument("--num_channels_base", type=int, default=64)
-        return parent_parser
