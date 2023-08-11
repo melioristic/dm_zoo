@@ -1,123 +1,45 @@
 import pytorch_lightning as pl
 import torch
+import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, SubsetRandomSampler
 import math
 from .DenoisingDiffusionProcess import *
 
+from pytorch_lightning import loggers as pl_loggers
 
-class PixelDiffusion(pl.LightningModule):
+
+class PixelDiffusionConditional(pl.LightningModule):
     def __init__(
         self,
+        config,
         generated_channels,
-        train_dataset=None,
-        valid_dataset=None,
-        num_timesteps=1000,
-        batch_size=1,
-        lr=1e-3,
-        use_random_validation_subset=False,
-        loss_fn=F.mse_loss,
-    ):
-        super().__init__()
-        self.train_dataset = train_dataset
-        self.valid_dataset = valid_dataset
-        self.lr = lr
-        self.batch_size = batch_size
-
-        self.model = DenoisingDiffusionProcess(
-            num_timesteps=num_timesteps,
-            generated_channels=generated_channels,
-            loss_fn=loss_fn,
-        )
-
-    @torch.no_grad()
-    def forward(self, *args, **kwargs):
-        return self.output_T(self.model(*args, **kwargs))
-
-    def input_T(self, input):
-        # By default, let the model accept samples in [0,1] range, and transform them automatically
-        return (input.clip(0, 1).mul_(2)).sub_(1)
-
-    def output_T(self, input):
-        # Inverse transform of model output from [-1,1] to [0,1] range
-        return (input.add_(1)).div_(2)
-
-    def training_step(self, batch, batch_idx):
-        images = batch
-        loss = self.model.p_loss(self.input_T(images))
-
-        self.log("train_loss", loss)
-
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        images = batch
-        loss = self.model.p_loss(self.input_T(images))
-
-        self.log("val_loss", loss)
-
-        return loss
-
-    def configure_optimizers(self):
-        # Cosine Annealing LR Scheduler
-
-        optimizer = torch.optim.AdamW(
-            list(
-                filter(
-                    lambda p: p.requires_grad,
-                    self.model.parameters(),
-                )
-            ),
-            lr=self.lr,
-        )
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            patience = 10,
-            factor=0.2,
-            min_lr=1e-8
-        )
-        
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": scheduler,
-            "monitor": "val_loss_new"
-        }
-
-
-class PixelDiffusionConditional(PixelDiffusion):
-    def __init__(
-        self,
-        generated_channels,
-        condition_channels,
+        conditioning_channels,
+        loss_fn,
+        sampler,
         train_dataset=None,
         valid_dataset=None,
         test_dataset=None,
-        batch_size=1,
-        lr=1e-3,
-        num_diffusion_steps_prediction=200,
-        cylindrical_padding=False,
-        loss_fn = F.mse_loss,
-        num_workers = 1,
-        lr_scheduler_name="Constant"
     ):
         pl.LightningModule.__init__(self)
-        self.generated_channels = generated_channels
-        self.condition_channels = condition_channels
-        self.batch_size = batch_size
+        
+        self.lr_scheduler_name = config.lr_scheduler_name
+        self.batch_size = config.batch_size
+        self.lr = config.learning_rate
+        self.num_workers=config.num_workers
+        self.num_diffusion_steps_inference=config.num_diffusion_steps_inference
+
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
-        self.test_dataset = test_dataset
-        self.lr = lr
-        self.batch_size = batch_size
-        self.num_diffusion_steps_prediction = num_diffusion_steps_prediction
-        self.num_workers=num_workers
-        self.lr_scheduler_name = lr_scheduler_name
+        self.test_dataset = test_dataset        
+
         self.model = DenoisingDiffusionConditionalProcess(
+            config.denoising_diffusion_process,
             generated_channels=generated_channels,
-            condition_channels=condition_channels,
-            cylindrical_padding=cylindrical_padding,
-            loss_fn=loss_fn
+            conditioning_channels=conditioning_channels,
+            loss_fn=loss_fn,
+            sampler=sampler
         )
 
     def _get_scheduler(self, optimizer):
@@ -153,7 +75,7 @@ class PixelDiffusionConditional(PixelDiffusion):
         if self.test_dataset is not None:
             return DataLoader(
                 self.test_dataset,
-                num_workers=self.num_workers,
+                num_workers=1, # self.num_workers,
                 batch_size=self.batch_size,
                 # shuffle=False,
             )
@@ -165,7 +87,7 @@ class PixelDiffusionConditional(PixelDiffusion):
             # indices = np.random.choice(np.arange(len(self.valid_dataset)), size=64, replace=False)
             return DataLoader(
                 self.valid_dataset,
-                num_workers=self.num_workers,
+                num_workers=1, # self.num_workers,
                 # sampler=SubsetRandomSampler(indices=indices),
                 batch_size=self.batch_size,
                 # shuffle=False,
@@ -197,7 +119,7 @@ class PixelDiffusionConditional(PixelDiffusion):
     def predict_step(self, batch, batch_idx):
         input, target = batch
         # set up DDIM sampler: 
-        sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
+        sampler = DDIM_Sampler(self.num_diffusion_steps_inference, self.model.num_timesteps)
         return self.output_T(self.model(self.input_T(input), sampler=sampler))
 
     def validation_step(self, batch, batch_idx):
@@ -206,16 +128,22 @@ class PixelDiffusionConditional(PixelDiffusion):
         loss = self.model.p_loss(self.input_T(output), self.input_T(input))
         self.log("val_loss", loss, prog_bar=True, on_epoch=True)
         # full reconstruction loss:
-        sampler = DDIM_Sampler(self.num_diffusion_steps_prediction, self.model.num_timesteps)
+        sampler = DDIM_Sampler(self.num_diffusion_steps_inference, self.model.num_timesteps)
         prediction = self.output_T(self.model(self.input_T(input), sampler=sampler))
         reconstruction_loss = F.mse_loss(prediction, output)
-        self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
 
-        return loss       
+        # log images
+        print(output.shape, prediction.shape)
+        if batch_idx == 0:
+            n_images = 5
+            grid = torchvision.utils.make_grid(torch.concat([output[:n_images], prediction[:n_images]], dim=0), nrow=n_images) # plot the first n_images images.
+            self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
+        
+        self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
+        return loss
     
     def configure_optimizers(self):
         # Cosine Annealing LR Scheduler
-
         optimizer = torch.optim.AdamW(
             list(
                 filter(
@@ -232,6 +160,15 @@ class PixelDiffusionConditional(PixelDiffusion):
             "monitor": "val_loss_new"
         }
     
+    def input_T(self, input):
+        # By default, let the model accept samples in [0,1] range, and transform them automatically
+        return (input.clip(0, 1).mul_(2)).sub_(1)
+
+    def output_T(self, input):
+        # Inverse transform of model output from [-1,1] to [0,1] range
+        return (input.add_(1)).div_(2)
+    
+    """
     def config(self):
         cfg = {
             "model_name": "PixelDiffusionConditional",
@@ -243,10 +180,10 @@ class PixelDiffusionConditional(PixelDiffusion):
             },
         }
         return cfg
-
-
+    """
 
 from torch.optim.lr_scheduler import _LRScheduler
+
 
 class CosineAnnealingWarmupRestarts(_LRScheduler):
     """
