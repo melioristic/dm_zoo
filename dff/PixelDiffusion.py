@@ -136,8 +136,7 @@ class PixelDiffusionConditional(pl.LightningModule):
         print(output.shape, prediction.shape)
         if batch_idx == 0:
             n_images = 5
-            print(torch.concat([output[:n_images], prediction[:n_images]], dim=1).shape)
-            grid = torchvision.utils.make_grid(torch.concat([output[:n_images], prediction[:n_images]], dim=0), nrow=5) # plot the first n_images images.
+            grid = torchvision.utils.make_grid(torch.concat([output[:n_images], prediction[:n_images]], dim=0), nrow=n_images) # plot the first n_images images.
             self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
         
         self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
