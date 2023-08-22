@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
+import torchvision
 
 from .vae import ConvVAE
 
@@ -25,11 +26,19 @@ class VAE(pl.LightningModule):
         self.lr_scheduler_name = lr_scheduler_name
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
-        len_train = self.train_dataset.stop-self.train_dataset.start
-        len_val = self.valid_dataset.stop-self.valid_dataset.start
+        if train_dataset!=None:
+            len_train = self.train_dataset.stop-self.train_dataset.start
+            len_val = self.valid_dataset.stop-self.valid_dataset.start
 
-        self.train_kld_weight = batch_size/len_train
-        self.val_kld_weight = batch_size/len_val
+            self.train_kld_weight = batch_size/len_train
+            self.val_kld_weight = batch_size/len_val
+        else:
+            len_train = None
+            len_val = None
+            self.train_kld_weight = None
+            self.val_kld_weight = None
+
+
 
         self.lr = lr
         self.batch_size = batch_size
@@ -41,8 +50,11 @@ class VAE(pl.LightningModule):
         )
 
     @torch.no_grad()
-    def forward(self, batch, batch_idx):
-        x, _ = batch
+    def forward(self, batch, *args):
+        if self.data_type == "input":
+            x, _ = batch
+        elif self.data_type == "output":
+            _, x = batch
         return self.model(x)
     
     def training_step(self, batch, batch_idx):
@@ -74,7 +86,11 @@ class VAE(pl.LightningModule):
         self.log("val_loss", loss["loss"], prog_bar=True, on_epoch=True)
         self.log("val_recon_loss", loss["recon_loss"], prog_bar=True, on_epoch=True)
         self.log("val_KLD_loss", loss["KLD_loss"] , prog_bar=True, on_epoch=True)
-    
+
+        if batch_idx == 0:
+            n_images = 5
+            grid = torchvision.utils.make_grid(torch.concat([r[:n_images], x[:n_images]], dim=0), nrow=n_images) # plot the first n_images images.
+            self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
 
     def configure_optimizers(self):
         # Cosine Annealing LR Scheduler

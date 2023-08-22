@@ -89,12 +89,11 @@ class LatentForecastDiffusion(pl.LightningModule):
     @torch.no_grad()
     def forward(self, batch, *args, **kwargs):
         x, _ = batch
-        
+
         x = self.input_T(x)
         x = self.model.vae(x)
         x = self.model.forecast(x)
-        x = self.model.diffusion(x, *args, **kwargs)
-
+        x = self.model.diffusion(x, *args, **kwargs)        
         return self.output_T(x)
 
     def training_step(self, batch, batch_idx):
@@ -102,10 +101,10 @@ class LatentForecastDiffusion(pl.LightningModule):
 
         x = self.input_T(x)
         x = self.model.vae(x)
-        x = self.model.forecast(x)
-        
-        loss = self.model.diffusion.p_loss(self.input_T(y), self.input_T(x))
-        self.log("train_loss", loss)
+        x = self.model.forecast(x)        
+        loss = self.model.diffusion.p_loss(self.input_T(y), x)
+
+        self.log("train_diffusion_loss", loss)
 
         return loss
     
@@ -114,10 +113,10 @@ class LatentForecastDiffusion(pl.LightningModule):
 
         x = self.input_T(x)
         x = self.model.vae(x)
-        x = self.model.forecast(x)
+        x = self.model.forecast(x)        
         
-        loss = self.model.diffusion.p_loss(self.input_T(y), self.input_T(x))
-        self.log("test_loss", loss)
+        loss = self.model.diffusion.p_loss(self.input_T(y), x)
+        self.log("test_diffusion_loss", loss)
 
         return loss
 
@@ -136,14 +135,12 @@ class LatentForecastDiffusion(pl.LightningModule):
         x, y = batch
 
         x = self.input_T(x)
-        
         x = self.model.vae(x)
-        print(x.shape)
         x = self.model.forecast(x)
-        print(x.shape)
+
         # standard loss:
         loss = self.model.diffusion.p_loss(self.input_T(y),x)
-        # self.log("val_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("val_diffusion_loss", loss, prog_bar=True, on_epoch=True)
         # full reconstruction loss:
         sampler = DDIM_Sampler(self.num_diffusion_steps_inference, self.model.diffusion.num_timesteps)
         prediction = self.output_T(self.model.diffusion(x, sampler=sampler))
@@ -156,7 +153,7 @@ class LatentForecastDiffusion(pl.LightningModule):
             grid = torchvision.utils.make_grid(torch.concat([y[:n_images], prediction[:n_images]], dim=0), nrow=n_images) # plot the first n_images images.
             self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
         
-        self.log("val_loss", reconstruction_loss, prog_bar=True, on_epoch=True)
+        self.log("val_reconstruction_loss", reconstruction_loss, prog_bar=True, on_epoch=True)
         return loss
     
     def configure_optimizers(self):
@@ -174,7 +171,7 @@ class LatentForecastDiffusion(pl.LightningModule):
         return {
             "optimizer": optimizer,
             "lr_scheduler": scheduler,
-            "monitor": "val_loss_new"
+            "monitor": "val_reconstruction_loss"
         }
     
     def input_T(self, input):

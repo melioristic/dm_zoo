@@ -49,11 +49,8 @@ class LFD(nn.Module):
 
 
     def forward(self, x):
-        print(x.shape)
         x = self.vae(x)
-        print(x.shape)
         x = self.forecast(x)
-        print(x.shape)
         x = self.diffusion(x)
 
         return x

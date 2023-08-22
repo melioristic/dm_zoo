@@ -220,7 +220,7 @@ class AFNONet(nn.Module):
             h=self.img_size[0] // self.patch_size[0],
             w=self.img_size[1] // self.patch_size[1],
         )
-        return x
+        return F.sigmoid(x)
 
 
 class PatchEmbed(nn.Module):
