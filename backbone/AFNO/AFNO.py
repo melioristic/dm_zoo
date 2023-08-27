@@ -159,7 +159,12 @@ class AFNONet(nn.Module):
         self.out_chans =out_channels
         self.num_features = self.embed_dim = config.embed_dim
         self.num_blocks = config.num_blocks 
+        self.final_act = nn.Identity()
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
+
+        if config.final_act is not None:
+            self.final_act = getattr(torch.nn, config.final_act)()
+            
 
         self.patch_embed = PatchEmbed(img_size=img_size, patch_size=self.patch_size, in_chans=self.in_chans, embed_dim=config.embed_dim)
         num_patches = self.patch_embed.num_patches
@@ -220,7 +225,7 @@ class AFNONet(nn.Module):
             h=self.img_size[0] // self.patch_size[0],
             w=self.img_size[1] // self.patch_size[1],
         )
-        return F.sigmoid(x)
+        return self.final_act(x)
 
 
 class PatchEmbed(nn.Module):
