@@ -52,7 +52,7 @@ class PixelDiffusionConditional(pl.LightningModule):
             case "StepLR":
                 return torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=180, gamma=0.2)
             case "CosineAnnealingLR":
-                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=360, eta_min=1e-6)
+                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=60, eta_min=1e-6)  # 360
             case "CosineAnnealingWarmRestarts":
                 return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=120, T_mult=2, eta_min=1e-6)
             case "CosineAnnealingWarmupRestarts":
@@ -75,7 +75,7 @@ class PixelDiffusionConditional(pl.LightningModule):
         if self.test_dataset is not None:
             return DataLoader(
                 self.test_dataset,
-                num_workers=1, # self.num_workers,
+                num_workers=1,  # self.num_workers,
                 batch_size=self.batch_size,
                 # shuffle=False,
             )
@@ -133,11 +133,11 @@ class PixelDiffusionConditional(pl.LightningModule):
         reconstruction_loss = F.mse_loss(prediction, output)
 
         # log images
-        print(output.shape, prediction.shape)
-        if batch_idx == 0:
-            n_images = 5
-            grid = torchvision.utils.make_grid(torch.concat([output[:n_images], prediction[:n_images]], dim=0), nrow=n_images) # plot the first n_images images.
-            self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
+        # print(output.shape, prediction.shape)
+        # if batch_idx == 0:
+        #     n_images = 5
+        #     grid = torchvision.utils.make_grid(torch.concat([output[:n_images], prediction[:n_images]], dim=0), nrow=n_images) # plot the first n_images images.
+        #     self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
         
         self.log("val_loss_new", reconstruction_loss, prog_bar=True, on_epoch=True)
         return loss
