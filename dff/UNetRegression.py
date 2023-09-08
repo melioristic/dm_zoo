@@ -10,35 +10,31 @@ from .DirectUNetPrediction import *
 class UNetRegression(pl.LightningModule):
     def __init__(
         self,
+        config,
         generated_channels,
         condition_channels,
+        loss_fn,
         train_dataset=None,
         valid_dataset=None,
         test_dataset=None,
-        batch_size=1,
-        lr=1e-3,
-        cylindrical_padding=False,
-        loss_fn = F.mse_loss,
-        num_workers = 1,
-        lr_scheduler_name="Constant"
+        
     ):
         pl.LightningModule.__init__(self)
         self.generated_channels = generated_channels
         self.condition_channels = condition_channels
-        self.batch_size = batch_size
+        self.batch_size = config.batch_size
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
         self.test_dataset = test_dataset
-        self.lr = lr
-        self.batch_size = batch_size
-        self.num_workers=num_workers
-        self.lr_scheduler_name = lr_scheduler_name
+        self.lr = config.learning_rate
+        self.num_workers=config.num_workers
+        self.lr_scheduler_name = config.lr_scheduler_name
 
         self.model = DirectUNetPrediction(
+                        config.direct_unet_prediction,
                         generated_channels,
                         condition_channels,
-                        loss_fn=loss_fn,
-                        cylindrical_padding=cylindrical_padding
+                        loss_fn=loss_fn
         )
 
     def _get_scheduler(self, optimizer):
